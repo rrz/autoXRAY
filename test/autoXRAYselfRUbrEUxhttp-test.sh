@@ -468,7 +468,8 @@ cat << EOF > "$SCRIPT_DIR/config.json"
         },
         "security": "none",
         "sockopt": {
-          "acceptProxyProtocol": true
+          "acceptProxyProtocol": true,
+          "trustedXForwardedFor": [""]
         }
       }
     },
