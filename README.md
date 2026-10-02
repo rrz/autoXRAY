@@ -1,13 +1,15 @@
 # autoXRAY - личный ВПН сервер
 Bash-скрипт для автоматической настройки ядра [Xray](https://github.com/XTLS/Xray-core). Предназначен для удобного получения актуальных конфигураций VPN для семейного/личного использования, настраивает selfsteal VLESS [XHTTP](https://github.com/XTLS/Xray-core/discussions/4113#discussioncomment-11468947) / [RAW](https://github.com/XTLS/REALITY/blob/main/README.en.md) REALITY.
 
+Актуальный репозиторий: [rrz/autoXRAY](https://github.com/rrz/autoXRAY).
+
 **UPD5: Добавлены MTProto FakeTLS, Hysteria2, можно выбирать ставить ли MTP/WARP** 
 
 **UPD4: Основной скрипт автоматически ставит WARP-cli.** 
 
 **UPD3: Основной и Экспериментальный скрипты объединены, ss2022 удален.** 
 
-**UPD2: Описание неактуальных скриптов перемещено в [oldScriptReadme.md](https://github.com/xVRVx/autoXRAY/blob/main/old/oldScriptReadme.md).**
+**UPD2: Описание неактуальных скриптов перемещено в [oldScriptReadme.md](https://github.com/rrz/autoXRAY/blob/main/old/oldScriptReadme.md).**
 
 **UPD1: Добавлен новый раздел — [построение моста RU -> EU](#%D0%BD%D0%B0%D1%81%D1%82%D1%80%D0%B0%D0%B8%D0%B2%D0%B0%D0%B5%D0%BC-%D0%BC%D0%BE%D1%81%D1%82-ru---eu).**
 
@@ -15,15 +17,16 @@ Bash-скрипт для автоматической настройки ядр�
 
 ===========================================================================
 
-## Конфигурация с клиентским конфигом для РФ (рекомендуется)
+## Конфигурация со стандартной подпиской (рекомендуется)
 Будем использовать маскировку под собственный сайт (selfsteal), который крутится на вашем же VPS. 
 
 Для установки надо [арендовать VPS](#выбор-сервера-подбирал-промо-тарифы) и [получить домен](#получаем-домен).
 
-Автоматически перенаправляет весь ру трафик напрямую.
+Подписка содержит обычные `vless://`/`hy2://` ссылки и не добавляет собственную маршрутизацию. Поэтому HAPP и INCY могут применить любой профиль, выбранный пользователем. Готовые профили для нужного клиента доступны в [hydraponique/roscomvpn-routing](https://github.com/hydraponique/roscomvpn-routing).
+
 ```bash
 
-bash -c "$(curl -L https://raw.githubusercontent.com/xVRVx/autoXRAY/main/autoXRAY1.sh)" -- вашДОМЕН.com
+bash -c "$(curl -L https://raw.githubusercontent.com/rrz/autoXRAY/main/autoXRAY1.sh)" -- вашДОМЕН.com
 ```
 
 **Вы получите:**
@@ -70,12 +73,10 @@ bash -c "$(curl -L https://raw.githubusercontent.com/xVRVx/autoXRAY/main/autoXRA
 ## Настройка VPN
 **Скопируйте конфиг (страничка подписки) в специализированное приложение:**
 
-- iOS/macOS: [Happ](https://www.happ.su/main/ru) или [v2rayTun](https://v2raytun.com/) | (FoXray, Hiddify)
-- Android: [Happ](https://www.happ.su/main/ru) или [v2rayTun](https://v2raytun.com/) | (v2rayNG, SimpleXray)
-- Windows: [Happ](https://www.happ.su/main/ru) или [winLoadXray](https://github.com/xVRVx/winLoadXRAY/releases/latest/download/winLoadXRAY.exe) или [v2rayN](https://github.com/2dust/v2rayN/releases/) | (v2rayTun, Throne, Hiddify)
-- Linux: [Happ](https://www.happ.su/main/ru) или [v2rayN](https://github.com/2dust/v2rayN/releases/) | (Throne, Hiddify)
-
-() - не поддерживают клиентский конфиг, только vless:// (конфиг для роутера).
+- iOS/macOS: [Happ](https://www.happ.su/main/ru), [INCY](https://incy.cc/) или [v2rayTun](https://v2raytun.com/)
+- Android: [Happ](https://www.happ.su/main/ru), [INCY](https://incy.cc/) или [v2rayTun](https://v2raytun.com/)
+- Windows: [Happ](https://www.happ.su/main/ru), [INCY](https://incy.cc/), [winLoadXray](https://github.com/xVRVx/winLoadXRAY/releases/latest/download/winLoadXRAY.exe) или [v2rayN](https://github.com/2dust/v2rayN/releases/)
+- Linux: [Happ](https://www.happ.su/main/ru), [INCY](https://incy.cc/) или [v2rayN](https://github.com/2dust/v2rayN/releases/)
 
 
 ===========================================================================
@@ -164,18 +165,18 @@ systemctl stop telemt; systemctl disable telemt; rm -f /etc/systemd/system/telem
 
 1) На заблокированный чистый VPS ставим стандартный рекомендованный скрипт и берем получившийся vless XHTTP reality EXTRA (конфиг №1):
 ```bash
-bash -c "$(curl -L https://raw.githubusercontent.com/xVRVx/autoXRAY/main/autoXRAY1.sh)" -- поддомен1.вашДОМЕН.com
+bash -c "$(curl -L https://raw.githubusercontent.com/rrz/autoXRAY/main/autoXRAY1.sh)" -- поддомен1.вашДОМЕН.com
 
 ```
 2) На ru VPS ставим новый скрипт (здесь нам понадобится vless XHTTP reality EXTRA конфиг №1):
 ```bash
-bash -c "$(curl -L https://raw.githubusercontent.com/xVRVx/autoXRAY/main/autoXRAYselfRUbrEUxhttp.sh)" -- поддомен2.вашДОМЕН.com "vless://вашКонфигXHTTP"
+bash -c "$(curl -L https://raw.githubusercontent.com/rrz/autoXRAY/main/autoXRAYselfRUbrEUxhttp.sh)" -- поддомен2.вашДОМЕН.com "vless://вашКонфигXHTTP"
 ```
 Установится прокси мост между серверами, итоговая цепочка: конфиг клиента -> ru VPS -> eu VPS -> зарубежный сайт
 
 Также можно взять vless RAW reality VISION и использовать предыдущий скрипт моста:
 ```bash
-bash -c "$(curl -L https://raw.githubusercontent.com/xVRVx/autoXRAY/main/old/autoXRAYselfstealConfRUbrEU.sh)" -- поддомен2.вашДОМЕН.com "vless://вашКонфигRAW"
+bash -c "$(curl -L https://raw.githubusercontent.com/rrz/autoXRAY/main/old/autoXRAYselfstealConfRUbrEU.sh)" -- поддомен2.вашДОМЕН.com "vless://вашКонфигRAW"
 ```
 Также теперь можно использовать несколько xhttp конфигов, все они будут добавлены в мост.
 
@@ -214,7 +215,7 @@ bash -c "$(curl -L https://raw.githubusercontent.com/xVRVx/autoXRAY/main/old/aut
 
 После этого можно удалить WARP-cli, если это необходимо.
 
-**Если возникла ошбика при установке WARP** - [читайте инструкцию.](https://github.com/xVRVx/autoXRAY/blob/main/test/warp-readme.md)
+**Если возникла ошбика при установке WARP** - [читайте инструкцию.](https://github.com/rrz/autoXRAY/blob/main/test/warp-readme.md)
 
 ===========================================================================
 # Сборка с MTProto proxy FakeTLS для ТГ

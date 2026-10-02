@@ -248,10 +248,9 @@ server {
     ssl_certificate_key "/etc/letsencrypt/live/$DOMAIN/privkey.pem";
 
     location = /${path_subpage}.json {
+		types { }
+		default_type text/plain;
 		add_header profile-title "base64:YXV0b1hSQVk=";
-		add_header routing "happ://routing/onadd/eyJOYW1lIjoiYXV0b1hSQVkiLCJHbG9iYWxQcm94eSI6InRydWUiLCJSb3V0ZU9yZGVyIjoiYmxvY2stcHJveHktZGlyZWN0IiwiUmVtb3RlRE5TVHlwZSI6IkRvSCIsIlJlbW90ZUROU0RvbWFpbiI6Imh0dHBzOi8vZG5zLmdvb2dsZS9kbnMtcXVlcnkiLCJSZW1vdGVETlNJUCI6IjguOC40LjQiLCJEb21lc3RpY0ROU1R5cGUiOiJEb0giLCJEb21lc3RpY0ROU0RvbWFpbiI6Imh0dHBzOi8vY2xvdWRmbGFyZS1kbnMuY29tL2Rucy1xdWVyeSIsIkRvbWVzdGljRE5TSVAiOiIxLjEuMS4xIiwiR2VvaXB1cmwiOiJodHRwczovL2dpdGh1Yi5jb20vTG95YWxzb2xkaWVyL3YycmF5LXJ1bGVzLWRhdC9yZWxlYXNlcy9sYXRlc3QvZG93bmxvYWQvZ2VvaXAuZGF0IiwiR2Vvc2l0ZXVybCI6Imh0dHBzOi8vZ2l0aHViLmNvbS9Mb3lhbHNvbGRpZXIvdjJyYXktcnVsZXMtZGF0L3JlbGVhc2VzL2xhdGVzdC9kb3dubG9hZC9nZW9zaXRlLmRhdCIsIkxhc3RVcGRhdGVkIjoiMTc3NTIwNjEwOCIsIkRuc0hvc3RzIjp7fSwiRGlyZWN0U2l0ZXMiOlsiZ2Vvc2l0ZTpjYXRlZ29yeS1ydSIsImdlb3NpdGU6cHJpdmF0ZSJdLCJEaXJlY3RJcCI6WyJnZW9pcDpwcml2YXRlIl0sIlByb3h5U2l0ZXMiOltdLCJQcm94eUlwIjpbXSwiQmxvY2tTaXRlcyI6WyJnZW9zaXRlOmNhdGVnb3J5LWFkcyIsImdlb3NpdGU6d2luLXNweSJdLCJCbG9ja0lwIjpbXSwiRG9tYWluU3RyYXRlZ3kiOiJJUElmTm9uTWF0Y2giLCJGYWtlRE5TIjoiZmFsc2UiLCJVc2VDaHVua0ZpbGVzIjoiZmFsc2UifQ";
-		
-		add_header routing-enable 0;
 	}
 
     location ~ /\.ht {
@@ -280,7 +279,7 @@ WEB_PATH="/var/www/$DOMAIN"
 mkdir -p "$WEB_PATH"
 
 # Генерируем сайт маскировку
-bash -c "$(curl -sL https://github.com/xVRVx/autoXRAY/raw/refs/heads/main/test/gen_page2.sh)" -- "$WEB_PATH"
+bash -c "$(curl -sL https://github.com/rrz/autoXRAY/raw/refs/heads/main/test/gen_page2.sh)" -- "$WEB_PATH"
 
 # Установка Xray
 bash -c "$(curl -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
@@ -547,40 +546,17 @@ $OUTBOUNDS
       },
       {
         "domain": [
-          "geosite:category-ads",
-          "geosite:win-spy",
-          "geosite:private"
-        ],
-        "outboundTag": "block"
-      },
-      {
-        "domain": [
           "habr.com",
           "apkmirror.com",
           "ifconfig.me",
           "checkip.amazonaws.com",
-          "pify.org",
-          "geosite:category-ip-geo-detect"
+          "pify.org"
         ],
         "balancerTag": "Super_Balancer"
       },
       {
         "domain": [
-          "testipv6.net",
-          "geosite:apple",
-          "geosite:apple-pki",
-          "geosite:huawei",
-          "geosite:xiaomi",
-          "geosite:category-android-app-download",
-          "geosite:f-droid",
-          "geosite:yandex",
-          "geosite:vk",
-          "geosite:microsoft",
-          "geosite:win-update",
-          "geosite:win-extra",
-          "geosite:google-play",
-          "geosite:steam",
-          "geosite:category-ru"
+          "testipv6.net"
         ],
         "outboundTag": "direct"
       },
@@ -605,69 +581,6 @@ print_config() {
 {
   "log": {
     "loglevel": "warning"
-  },
-  "dns": {
-    "servers":[
-      "https://8.8.4.4/dns-query",
-      "https://8.8.8.8/dns-query",
-      "https://1.1.1.1/dns-query"
-    ],
-    "queryStrategy": "UseIPv4"
-  },
-  "routing": {
-    "domainMatcher": "hybrid",
-    "domainStrategy": "IPIfNonMatch",
-    "rules":[
-      {
-        "domain":[
-          "geosite:category-ads",
-          "geosite:win-spy"
-        ],
-        "outboundTag": "block"
-      },
-      {
-        "protocol":[
-          "bittorrent"
-        ],
-        "outboundTag": "direct"
-      },
-      {
-        "domain":[
-          "habr.com", "apkmirror.com"
-        ],
-        "outboundTag": "proxy"
-      },
-      {
-        "domain":[
-          "geosite:private",
-          "ifconfig.me",
-          "checkip.amazonaws.com",
-          "pify.org",
-		  "geosite:category-ip-geo-detect",
-          "geosite:apple",
-          "geosite:apple-pki",
-          "geosite:huawei",
-          "geosite:xiaomi",
-          "geosite:category-android-app-download",
-          "geosite:f-droid",
-          "geosite:yandex",
-          "geosite:vk",
-          "geosite:microsoft",
-          "geosite:win-update",
-          "geosite:win-extra",
-          "geosite:google-play",
-          "geosite:steam",
-          "geosite:category-ru"
-        ],
-        "outboundTag": "direct"
-      },
-      {
-        "ip":[
-          "geoip:private"
-        ],
-        "outboundTag": "direct"
-      }
-    ]
   },
   "inbounds":[
     {
@@ -860,8 +773,13 @@ EOF
     CONFIGS_ARRAY+=( "Direct EU ($REMARK_BASE)|${VLESS_URLS[$i]}" )
 done
 
-# Записываем массив в файл подписки
-echo "[$CLIENT_CONFIGS]" > "$WEB_PATH/$path_subpage.json"
+# Стандартная подписка из share-ссылок позволяет клиенту применить выбранный routing-профиль.
+{
+    for item in "${CONFIGS_ARRAY[@]}"; do
+        printf '%s\n' "${item#*|}"
+    done
+} | base64 -w 0 > "$WEB_PATH/$path_subpage.json"
+printf '\n' >> "$WEB_PATH/$path_subpage.json"
 
 systemctl restart xray
 echo -e "Перезапуск XRAY"
@@ -871,7 +789,7 @@ configListLink="https://$DOMAIN/$path_subpage.html"
 
 if [ "$INSTALL_MTP" = true ]; then
     echo -e "\n\n${GRN}Устанавливаем MTProto FakeTLS ${NC}"
-    source <(curl -sL https://github.com/xVRVx/autoXRAY/raw/refs/heads/main/test/telemt-test.sh)
+    source <(curl -sL https://github.com/rrz/autoXRAY/raw/refs/heads/main/test/telemt-test.sh)
 else
     echo -e "\n\n${YEL}Установка MTProto FakeTLS пропущена.${NC}"
     MTProto=""
@@ -895,7 +813,7 @@ EOF
 
 cat >> "$WEB_PATH/$path_subpage.html" <<EOF
 
-<h2>📂 Ссылка на подписку (готовый конфиг клиента с роутингом)</h2>
+<h2>📂 Ссылка на подписку</h2>
 <div class="config-row">
     <div class="config-label">Subscription</div>
     <div class="config-code" id="subLink">$subPageLink</div>
@@ -908,7 +826,7 @@ cat >> "$WEB_PATH/$path_subpage.html" <<EOF
     <a href="happ://add/$subPageLink" class="btn">⚡ Add to HAPP</a>
     <a href="https://www.happ.su/main/ru" target="_blank" class="btn download">⬇️ Download App</a>
 </div>
-<p>Маршрутизацию нужно выключить, она тут встроенная. По умолчанию она выключена - включается, если вы пользовались сторонними сервисами.</p>
+<p>Подписка не содержит встроенной маршрутизации. Выберите нужный routing-профиль в приложении.</p>
 
 <h2>➡️ Конфиги ($COUNT VPS x 3 протокола)</h2>
 EOF
@@ -955,7 +873,7 @@ cat >> "$WEB_PATH/$path_subpage.html" <<EOF
     <button class="btn-action qr-btn" onclick="showQR('cAll')">QR</button>
 </div>
 
-<div><a style="color:white;margin:40px auto 20px;display:block;text-align:center;" href="https://github.com/xVRVx/autoXRAY">https://github.com/xVRVx/autoXRAY</a></div>
+<div><a style="color:white;margin:40px auto 20px;display:block;text-align:center;" href="https://github.com/rrz/autoXRAY">https://github.com/rrz/autoXRAY</a></div>
 
 <div id="qrModal" class="modal-overlay"><div class="modal-content"><div id="qrcode"></div><button class="close-modal-btn" onclick="closeModal()">Close</button></div></div>
 </body></html>
@@ -994,6 +912,6 @@ ${GRN}$configListLink ${NC}
 Открыт локальный socks5 на порту 10443.
 Внутри клиента: socks5 на 10808, 2080 и http на 10809.
 
-${GRN}Поддержать автора: https://github.com/xVRVx/autoXRAY ${NC}
+${GRN}Репозиторий: https://github.com/rrz/autoXRAY ${NC}
 
 "
