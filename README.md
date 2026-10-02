@@ -3,6 +3,8 @@ Bash-скрипт для автоматической настройки ядр�
 
 Актуальный репозиторий: [rrz/autoXRAY](https://github.com/rrz/autoXRAY).
 
+Новая версия `autoXRAY2.sh` использует TLS на порту 443, Xray v26.9.9 и Telegram Web Proxy. Подписка содержит только ссылки на подключения; маршруты выбираются в клиентском приложении. Прежние `autoXRAY1.sh` и `autoXRAYselfRUbrEUxhttp.sh` сохранены.
+
 **UPD5: Добавлены MTProto FakeTLS, Hysteria2, можно выбирать ставить ли MTP/WARP** 
 
 **UPD4: Основной скрипт автоматически ставит WARP-cli.** 
@@ -26,14 +28,14 @@ Bash-скрипт для автоматической настройки ядр�
 
 ```bash
 
-bash -c "$(curl -L https://raw.githubusercontent.com/rrz/autoXRAY/main/autoXRAY1.sh)" -- вашДОМЕН.com
+bash -c "$(curl -L https://raw.githubusercontent.com/rrz/autoXRAY/main/autoXRAY2.sh)" -- вашДОМЕН.com
 ```
 
 **Вы получите:**
-1) vless XHTTP reality EXTRA на 443 порту - продвинутые настройки, повышенная нагрузка на cpu.
-2) vless RAW reality VISION на 443 порту - хорошая маскировка, быстрый.
-3) Hysteria2 на 8080 порту
-4) vless RAW tls VISION - 8443 порт
+1) VLESS XHTTP TLS на 443 порту.
+2) VLESS RAW TLS VISION на 443 порту.
+3) Hysteria2 на 443 порту.
+4) Telegram Web Proxy на 443 порту при выборе установки.
 5) vless XHTTP tls EXTRA - 8443 порт
 6) vless WS tls - 8443 порт
 7) vless GRPC tls - 8443 порт
@@ -163,14 +165,14 @@ systemctl stop telemt; systemctl disable telemt; rm -f /etc/systemd/system/telem
 ## Настраиваем мост RU -> EU
 Многие столкнулись с блокировками хостинг-сетей по TLS (особенно при использовании мобильного интернета). Существует решение — построение моста между серверами в разных локациях. Для этого необходимо:
 
-1) На заблокированный чистый VPS ставим стандартный рекомендованный скрипт и берем получившийся vless XHTTP reality EXTRA (конфиг №1):
+1) На EU VPS ставим основной скрипт и берем получившуюся ссылку VLESS XHTTP TLS:
 ```bash
-bash -c "$(curl -L https://raw.githubusercontent.com/rrz/autoXRAY/main/autoXRAY1.sh)" -- поддомен1.вашДОМЕН.com
+bash -c "$(curl -L https://raw.githubusercontent.com/rrz/autoXRAY/main/autoXRAY2.sh)" -- поддомен1.вашДОМЕН.com
 
 ```
-2) На ru VPS ставим новый скрипт (здесь нам понадобится vless XHTTP reality EXTRA конфиг №1):
+2) На RU VPS ставим скрипт моста, передав ссылку VLESS XHTTP TLS:
 ```bash
-bash -c "$(curl -L https://raw.githubusercontent.com/rrz/autoXRAY/main/autoXRAYselfRUbrEUxhttp.sh)" -- поддомен2.вашДОМЕН.com "vless://вашКонфигXHTTP"
+bash -c "$(curl -L https://raw.githubusercontent.com/rrz/autoXRAY/main/bridgeTLSxhttp.sh)" -- поддомен2.вашДОМЕН.com "vless://вашКонфигXHTTP"
 ```
 Установится прокси мост между серверами, итоговая цепочка: конфиг клиента -> ru VPS -> eu VPS -> зарубежный сайт
 
