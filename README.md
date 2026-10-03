@@ -234,4 +234,4 @@ bash -c "$(curl -L https://raw.githubusercontent.com/rrz/autoXRAY/main/old/autoX
 
 Скрипты будут дорабатываться до актуального состояния.
 
-**[Поддержать автора.](https://pay.cryptocloud.plus/pos/Weu1Y0fOhLho0nte)**
+**[Поддержать автора.](https://github.com/xVRVx/autoXRAY)**

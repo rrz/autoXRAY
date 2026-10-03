@@ -859,5 +859,5 @@ ${GRN}$subPageLink${NC}
 ${YEL}Ссылка на сохраненные конфиги (Web UI): ${NC}
 ${GRN}$configListLink ${NC}
 
-${GRN}Поддержать автора: https://github.com/rrz/autoXRAY ${NC}
+${GRN}Поддержать автора: https://github.com/xVRVx/autoXRAY ${NC}
 "
