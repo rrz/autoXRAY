@@ -24,6 +24,11 @@ if [ -z "$DOMAIN" ]; then
     exit 1
 fi
 
+if [ -e /usr/local/etc/xray/autoxray-users.json ]; then
+    echo -e "${RED}❌ Пользователи уже настроены. Управляйте ими через autoxray-user; повторная установка перезапишет ключи.${NC}"
+    exit 1
+fi
+
 KEYRING_PKG=$([ "$ID" = "ubuntu" ] && echo "ubuntu-keyring" || echo "debian-archive-keyring")
 
 echo -e "${YEL}Подготовка официального репозитория Nginx для $ID ($VERSION_CODENAME)...${NC}"
@@ -267,6 +272,18 @@ server {
 
     location = /${path_subpage}.json {
         add_header profile-title "base64:YXV0b1hSQVk=";
+        try_files \$uri =404;
+    }
+
+    # Личные подписки, создаваемые командой autoxray-user.
+    location ~ ^/s/[A-Za-z0-9_-]+\.json$ {
+        types { }
+        default_type text/plain;
+        add_header profile-title "base64:YXV0b1hSQVk=";
+        try_files \$uri =404;
+    }
+
+    location ~ ^/s/[A-Za-z0-9_-]+\.html$ {
         try_files \$uri =404;
     }
 
@@ -603,7 +620,7 @@ EOF
 # --- ЗАПИСЬ BODY (ДИНАМИЧЕСКИЕ ДАННЫЕ) ---
 cat >> "$WEB_PATH/$path_subpage.html" <<EOF
 
-<h2>📂 Ссылка на подписку (готовый конфиг клиента с роутингом)</h2>
+<h2>📂 Ссылка на подписку</h2>
 <div class="config-row">
     <div class="config-label">Subscription</div>
     <div class="config-code" id="subLink">$subPageLink</div>
@@ -618,7 +635,7 @@ cat >> "$WEB_PATH/$path_subpage.html" <<EOF
     <a href="happ://add/$subPageLink" class="btn">⚡ Add to HAPP</a>
     <a href="https://www.happ.su/main/ru" target="_blank" class="btn download">⬇️ Download App</a>
 </div>
-<p>Маршрутизацию нужно выключить, она тут встроенная. По умолчанию она выключена - включается, если вы пользовались сторонними сервисами.</p>
+<p>Подписка не содержит правил маршрутизации. Выберите нужный профиль в клиентском приложении.</p>
 
 
 <h2>➡️ Конфиги</h2>
@@ -668,6 +685,17 @@ cat >> "$WEB_PATH/$path_subpage.html" <<EOF
 <div id="qrModal" class="modal-overlay"><div class="modal-content"><div id="qrcode"></div><button class="close-modal-btn" onclick="closeModal()">Close</button></div></div>
 </body></html>
 EOF
+
+# Команда для личных подписок и проверки последнего подключения.
+LOCAL_USER_SCRIPT="$(dirname "${BASH_SOURCE[0]}")/autoxray-user"
+if [ -f "$LOCAL_USER_SCRIPT" ]; then
+    install -m 755 "$LOCAL_USER_SCRIPT" /usr/local/bin/autoxray-user || exit 1
+else
+    curl -fsSL https://raw.githubusercontent.com/rrz/autoXRAY/main/autoxray-user -o /usr/local/bin/autoxray-user || exit 1
+    chmod 755 /usr/local/bin/autoxray-user
+fi
+/usr/local/bin/autoxray-user init --domain "$DOMAIN" --web-path "$WEB_PATH" \
+    --path-xhttp "$path_xhttp" --fingerprint "$fpBro" --subscription-token "$path_subpage" || exit 1
 
 # --- ФИНАЛЬНАЯ ПРОВЕРКА ---
 echo -e "\n${YEL}=== Финальная проверка статусов ===${NC}"

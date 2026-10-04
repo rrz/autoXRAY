@@ -1,0 +1,416 @@
+#!/usr/bin/env python3
+"""Manage individual autoXRAY2 subscriptions on the server."""
+
+import argparse
+import base64
+import copy
+import fcntl
+import gzip
+import html
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import stat
+import subprocess
+import sys
+import tempfile
+import unicodedata
+from urllib.parse import parse_qs, urlsplit
+import uuid
+
+
+CONFIG = Path("/usr/local/etc/xray/config.json")
+STATE = Path("/usr/local/etc/xray/autoxray-users.json")
+LOCK = Path("/usr/local/etc/xray/autoxray-users.lock")
+ACCESS_LOG = Path("/var/log/xray/access.log")
+NGINX = Path("/etc/nginx/conf.d/default.conf")
+TAGS = {"raw": "vsRAWtlsVISION", "xhttp": "vsXHTTPtls", "hy2": "Hysteria2"}
+NAME_LIMIT = 64
+
+
+def fail(message):
+    raise ValueError(message)
+
+
+def atomic_write(path, data, mode, owner=None):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        os.fchmod(fd, mode)
+        if owner is not None and os.geteuid() == 0:
+            os.fchown(fd, *owner)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def json_bytes(value):
+    return (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def read_json(path):
+    with path.open(encoding="utf-8") as stream:
+        return json.load(stream)
+
+
+def check_root():
+    if os.geteuid() != 0:
+        fail("Запустите команду от root (sudo autoxray-user ...).")
+
+
+def inbounds(config):
+    result = {}
+    for inbound in config.get("inbounds", []):
+        for kind, tag in TAGS.items():
+            if inbound.get("tag") == tag:
+                result[kind] = inbound
+    if set(result) != set(TAGS):
+        fail("Конфиг не похож на autoXRAY2.sh: отсутствует RAW, XHTTP или Hysteria2 inbound.")
+    return result
+
+
+def client_list(inbound):
+    settings = inbound["settings"]
+    # The autoXRAY2 installer uses `clients` for all three inbounds.
+    return settings["clients"]
+
+
+def make_emails():
+    key = uuid.uuid4().hex
+    return {kind: f"ax-{key}-{kind}@local" for kind in TAGS}
+
+
+def validate_name(name):
+    name = unicodedata.normalize("NFC", name).strip()
+    if not name or len(name) > NAME_LIMIT or any(ord(ch) < 32 or ord(ch) == 127 for ch in name):
+        fail("Имя должно содержать от 1 до 64 печатных символов.")
+    return name
+
+
+def find_user(state, name):
+    key = validate_name(name).casefold()
+    for user in state["users"]:
+        if user["name"].casefold() == key:
+            return user
+    fail(f"Пользователь «{name}» не найден.")
+
+
+def subscription_url(state, user):
+    prefix = "" if user.get("owner") else "s/"
+    return f"https://{state['domain']}/{prefix}{user['token']}.json"
+
+
+def page_url(state, user):
+    prefix = "" if user.get("owner") else "s/"
+    return f"https://{state['domain']}/{prefix}{user['token']}.html"
+
+
+def links(state, user):
+    domain = state["domain"]
+    path = state["path_xhttp"]
+    fp = state["fingerprint"]
+    identifier = user["uuid"]
+    extra = ("%7B%22noGRPCHeader%22%3Afalse%2C%22xPaddingBytes%22%3A%22150-400%22%2C"
+             "%22scMaxEachPostBytes%22%3A3000000%2C%22scMinPostsIntervalMs%22%3A0%2C"
+             "%22scMaxBufferedPosts%22%3A50%2C%22scStreamUpServerSecs%22%3A%2290-180%22%2C"
+             "%22xmux%22%3A%7B%22maxConcurrency%22%3A%222-4%22%2C%22cMaxReuseTimes%22%3A"
+             "%22800-1500%22%2C%22hMaxReusableSecs%22%3A%22900-1200%22%7D%7D")
+    return [
+        ("VLESS XHTTP TLS", f"vless://{identifier}@{domain}:443?security=tls&alpn=h2&type=xhttp&mode=stream-up&path=%2F{path}&extra={extra}&sni={domain}&fp={fp}#VLESS-XHTTP"),
+        ("VLESS RAW TLS VISION", f"vless://{identifier}@{domain}:443?security=tls&type=tcp&headerType=&path=&host=&flow=xtls-rprx-vision&sni={domain}&fp={fp}&spx=%2F#VLESS-RAW"),
+        ("Hysteria2", f"hy2://{user['hy2_auth']}@{domain}:443/?sni={domain}&alpn=h3#Hysteria2"),
+    ]
+
+
+def user_files(state, user):
+    root = Path(state["web_path"]) / "s"
+    token = user["token"]
+    entries = links(state, user)
+    subscription = base64.b64encode(("\n".join(link for _, link in entries) + "\n").encode()) + b"\n"
+    rows = "\n".join(
+        f"<li><strong>{html.escape(label)}</strong><br><code>{html.escape(link)}</code></li>"
+        for label, link in entries
+    )
+    page = f"""<!doctype html>
+<html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>autoXRAY — {html.escape(user['name'])}</title>
+<style>body{{font:16px system-ui;max-width:760px;margin:3em auto;padding:0 1em;background:#15191f;color:#eee}}
+a{{color:#94bcff}}li{{margin:1.5em 0}}code{{display:block;overflow-wrap:anywhere;margin-top:.5em}}</style>
+<h1>{html.escape(user['name'])}</h1>
+<p>Маршрутизация задаётся в клиентском приложении.</p>
+<p><a href="{html.escape(subscription_url(state, user), quote=True)}">Ссылка на подписку</a></p>
+<p><a href="happ://add/{html.escape(subscription_url(state, user), quote=True)}">Добавить в HAPP</a></p>
+<ul>{rows}</ul></html>
+""".encode("utf-8")
+    return {root / f"{token}.json": subscription, root / f"{token}.html": page}
+
+
+def update_config(config, state, previous_state=None):
+    result = copy.deepcopy(config)
+    inbound_by_kind = inbounds(result)
+    for kind, inbound in inbound_by_kind.items():
+        records = client_list(inbound)
+        managed = {user["emails"][kind] for user in state["users"]}
+        previous = {user["emails"][kind] for user in (previous_state or {}).get("users", [])}
+        known_users = state["users"] + (previous_state or {}).get("users", [])
+        credential_key = "auth" if kind == "hy2" else "id"
+        user_key = "hy2_auth" if kind == "hy2" else "uuid"
+        credentials = {user[user_key] for user in known_users}
+        records[:] = [record for record in records
+                      if record.get("email") not in managed | previous
+                      and record.get(credential_key) not in credentials]
+        for user in state["users"]:
+            email = user["emails"][kind]
+            if kind == "raw":
+                records.append({"flow": "xtls-rprx-vision", "id": user["uuid"], "email": email})
+            elif kind == "xhttp":
+                records.append({"id": user["uuid"], "email": email})
+            else:
+                records.append({"auth": user["hy2_auth"], "email": email})
+        if len(managed) != len(state["users"]):
+            fail("Повторяющиеся email в состоянии пользователей.")
+    result.setdefault("log", {})["access"] = str(ACCESS_LOG)
+    return result
+
+
+def apply(state, *, write_users=(), delete_users=()):
+    old_config = CONFIG.read_bytes()
+    config_stat = CONFIG.stat()
+    config_mode = stat.S_IMODE(config_stat.st_mode)
+    config_owner = (config_stat.st_uid, config_stat.st_gid)
+    old_state = STATE.read_bytes() if STATE.exists() else None
+    previous_state = json.loads(old_state) if old_state else None
+    new_config = update_config(json.loads(old_config), state, previous_state)
+    config_data = json_bytes(new_config)
+    fd, candidate = tempfile.mkstemp(prefix=".autoxray-check-", suffix=".json", dir=CONFIG.parent)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(config_data)
+        subprocess.run(["xray", "-test", "-config", candidate], check=True, stdout=subprocess.DEVNULL)
+    finally:
+        os.unlink(candidate)
+
+    files = {}
+    for user in write_users:
+        files.update(user_files(state, user))
+    for path in files:
+        if path.exists():
+            fail(f"Файл уже существует: {path}")
+
+    try:
+        for path, data in files.items():
+            atomic_write(path, data, 0o644)
+        atomic_write(CONFIG, config_data, config_mode, config_owner)
+        atomic_write(STATE, json_bytes(state), 0o600)
+        subprocess.run(["systemctl", "restart", "xray"], check=True)
+        subprocess.run(["systemctl", "is-active", "--quiet", "xray"], check=True)
+        for user in delete_users:
+            for path in user_files(state, user):
+                path.unlink(missing_ok=True)
+    except Exception:
+        atomic_write(CONFIG, old_config, config_mode, config_owner)
+        if old_state is None:
+            STATE.unlink(missing_ok=True)
+        else:
+            atomic_write(STATE, old_state, 0o600)
+        for path in files:
+            path.unlink(missing_ok=True)
+        subprocess.run(["systemctl", "restart", "xray"], check=False)
+        raise
+
+
+def init(args):
+    if STATE.exists():
+        fail("Управление уже инициализировано.")
+    config = read_json(CONFIG)
+    inbound_by_kind = inbounds(config)
+    raw = client_list(inbound_by_kind["raw"])
+    xhttp = client_list(inbound_by_kind["xhttp"])
+    hy2 = client_list(inbound_by_kind["hy2"])
+    if len(raw) != 1 or len(xhttp) != 1 or len(hy2) != 1:
+        fail("Инициализация ожидает по одному клиенту в RAW, XHTTP и Hysteria2.")
+    owner_uuid = raw[0]["id"]
+    if xhttp[0]["id"] != owner_uuid:
+        fail("UUID исходных RAW и XHTTP клиентов различаются.")
+    domain = args.domain or inbound_by_kind["hy2"]["streamSettings"]["tlsSettings"]["serverName"]
+    if not re.fullmatch(r"[A-Za-z0-9.-]+", domain):
+        fail("Некорректный домен в конфигурации Xray.")
+    web_path = args.web_path or f"/var/www/{domain}"
+    path_xhttp = args.path_xhttp or inbound_by_kind["xhttp"]["streamSettings"]["xhttpSettings"]["path"].lstrip("/")
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", path_xhttp):
+        fail("Некорректный путь XHTTP в конфигурации Xray.")
+    token = args.subscription_token
+    fingerprint = args.fingerprint
+    if not token or not fingerprint:
+        for candidate in Path(web_path).glob("*.json"):
+            try:
+                payload = base64.b64decode(candidate.read_bytes(), validate=False).decode("utf-8")
+            except (ValueError, UnicodeDecodeError, OSError):
+                continue
+            if owner_uuid not in payload or hy2[0]["auth"] not in payload:
+                continue
+            token = token or candidate.stem
+            first_link = next((line for line in payload.splitlines() if line.startswith("vless://")), "")
+            fingerprint = fingerprint or parse_qs(urlsplit(first_link).query).get("fp", [""])[0]
+            break
+    if not token or not re.fullmatch(r"[A-Za-z0-9_-]+", token):
+        fail("Не найдена исходная подписка. Укажите --subscription-token.")
+    if not fingerprint or not re.fullmatch(r"[A-Za-z0-9_-]+", fingerprint):
+        fail("Не найден fingerprint. Укажите --fingerprint.")
+    owner = {"name": "Владелец", "uuid": owner_uuid, "hy2_auth": hy2[0]["auth"],
+             "token": token, "emails": make_emails(), "owner": True}
+    state = {"version": 1, "domain": domain, "web_path": web_path,
+             "path_xhttp": path_xhttp, "fingerprint": fingerprint, "users": [owner]}
+    original_nginx = NGINX.read_bytes()
+    modified_nginx = add_nginx_locations(original_nginx)
+    if modified_nginx != original_nginx:
+        nginx_stat = NGINX.stat()
+        nginx_mode = stat.S_IMODE(nginx_stat.st_mode)
+        nginx_owner = (nginx_stat.st_uid, nginx_stat.st_gid)
+        atomic_write(NGINX, modified_nginx, nginx_mode, nginx_owner)
+        try:
+            subprocess.run(["nginx", "-t"], check=True, stdout=subprocess.DEVNULL)
+            subprocess.run(["systemctl", "reload", "nginx"], check=True)
+        except Exception:
+            atomic_write(NGINX, original_nginx, nginx_mode, nginx_owner)
+            subprocess.run(["systemctl", "reload", "nginx"], check=False)
+            raise
+    try:
+        apply(state)
+    except Exception:
+        if modified_nginx != original_nginx:
+            atomic_write(NGINX, original_nginx, nginx_mode, nginx_owner)
+            subprocess.run(["systemctl", "reload", "nginx"], check=False)
+        raise
+    print("Управление пользователями установлено. Добавить друга: autoxray-user add Маша")
+
+
+def add_nginx_locations(content):
+    text = content.decode("utf-8")
+    if "location ~ ^/s/[A-Za-z0-9_-]+" in text:
+        return content
+    marker = "    # XHTTP endpoint"
+    if marker not in text:
+        fail("Не удалось найти место для личных подписок в конфиге Nginx.")
+    locations = r'''    # Личные подписки autoXRAY.
+    location ~ ^/s/[A-Za-z0-9_-]+\.json$ {
+        types { }
+        default_type text/plain;
+        add_header profile-title "base64:YXV0b1hSQVk=";
+        try_files $uri =404;
+    }
+
+    location ~ ^/s/[A-Za-z0-9_-]+\.html$ {
+        try_files $uri =404;
+    }
+
+'''
+    return text.replace(marker, locations + marker, 1).encode("utf-8")
+
+
+def add(args, state):
+    name = validate_name(args.name)
+    if any(user["name"].casefold() == name.casefold() for user in state["users"]):
+        fail(f"Пользователь «{name}» уже существует.")
+    user = {"name": name, "uuid": str(uuid.uuid4()), "hy2_auth": secrets.token_hex(16),
+            "token": secrets.token_urlsafe(24), "emails": make_emails()}
+    state["users"].append(user)
+    apply(state, write_users=[user])
+    print(f"{name}\nПодписка: {subscription_url(state, user)}\nСтраница:  {page_url(state, user)}")
+
+
+def remove(args, state):
+    user = find_user(state, args.name)
+    if user.get("owner"):
+        fail("Исходного владельца нельзя удалить этой командой.")
+    state["users"].remove(user)
+    apply(state, delete_users=[user])
+    print(f"Доступ пользователя «{user['name']}» отключён.")
+
+
+def latest_access(emails):
+    paths = sorted(ACCESS_LOG.parent.glob("access.log*"))
+    if not paths:
+        return None, False
+    latest = None
+    patterns = tuple(f"email: {email}" for email in emails)
+    stamp = re.compile(r"^(\d{4}/\d\d/\d\d \d\d:\d\d:\d\d(?:\.\d+)?)")
+    for path in paths:
+        if not path.is_file():
+            continue
+        opener = gzip.open if path.suffix == ".gz" else open
+        try:
+            with opener(path, "rt", encoding="utf-8", errors="replace") as stream:
+                for line in stream:
+                    if " accepted " not in line or not any(pattern in line for pattern in patterns):
+                        continue
+                    match = stamp.match(line)
+                    if match and (latest is None or match.group(1) > latest):
+                        latest = match.group(1)
+        except OSError:
+            continue
+    return latest, True
+
+
+def status(state, name=None):
+    users = [find_user(state, name)] if name else state["users"]
+    for user in users:
+        seen, log_exists = latest_access(user["emails"].values())
+        value = f"последнее подключение: {seen} (время сервера)" if seen else (
+            "подключений пока не видно" if log_exists else "журнал Xray отсутствует")
+        print(f"{user['name']}: {value}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Личные подписки и статус autoXRAY2")
+    commands = parser.add_subparsers(dest="command", required=True)
+    setup = commands.add_parser("init", help="первичная настройка после установки autoXRAY2")
+    setup.add_argument("--domain")
+    setup.add_argument("--web-path")
+    setup.add_argument("--path-xhttp")
+    setup.add_argument("--fingerprint")
+    setup.add_argument("--subscription-token")
+    for command in ("add", "remove", "link"):
+        item = commands.add_parser(command)
+        item.add_argument("name")
+    item = commands.add_parser("status")
+    item.add_argument("name", nargs="?")
+    commands.add_parser("list")
+    args = parser.parse_args()
+    check_root()
+    LOCK.parent.mkdir(parents=True, exist_ok=True)
+    with LOCK.open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if args.command == "init":
+            init(args)
+            return
+        if not STATE.exists():
+            fail("Сначала выполните установку autoXRAY2.sh или команду autoxray-user init.")
+        state = read_json(STATE)
+        if args.command == "add":
+            add(args, state)
+        elif args.command == "remove":
+            remove(args, state)
+        elif args.command == "link":
+            print(subscription_url(state, find_user(state, args.name)))
+        elif args.command == "list":
+            for user in state["users"]:
+                print(f"{user['name']}: {subscription_url(state, user)}")
+        elif args.command == "status":
+            status(state, args.name)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (ValueError, OSError, subprocess.CalledProcessError) as exc:
+        print(f"Ошибка: {exc}", file=sys.stderr)
+        sys.exit(1)
